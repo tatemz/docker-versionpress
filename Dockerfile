@@ -17,6 +17,9 @@ RUN chmod a+w /bin && chmod a+w /bin/wp-cli.phar
 RUN wp cli update --nightly --yes
 RUN chmod g-w,o-w /bin && chmod g-w,o-w /bin/wp-cli.phar
 
+# Add replace wordpress with versionpress-skeleton 
+RUN rm -rf /usr/src/wordpress && git clone git://github.com/tatemz/versionpress-skeleton.git /usr/src/wordpress --recursive
+
 # Update entrypoint
 COPY docker-entrypoint.sh /entrypoint.sh
 

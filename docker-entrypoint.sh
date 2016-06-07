@@ -24,12 +24,6 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     exit 1
   fi
 
-  if ! [ -d content/plugins/versionpress/ ]; then
-    curl -L -o versionpress.zip https://github.com/versionpress/versionpress/releases/download/$VERSIONPRESS_VERSION/versionpress-$VERSIONPRESS_VERSION.zip
-    unzip versionpress.zip -d /var/www/html/content/plugins/
-    rm versionpress.zip
-  fi
-
   if ! [ -e wp/index.php -a -e wp/wp-includes/version.php ]; then
     echo >&2 "WordPress not found in $(pwd) - copying now..."
     if [ "$(ls -A)" ]; then
@@ -54,6 +48,12 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
 EOF
       chown www-data:www-data .htaccess
     fi
+  fi
+
+  if ! [ -d content/plugins/versionpress/ ]; then
+    curl -L -o versionpress.zip https://github.com/versionpress/versionpress/releases/download/$VERSIONPRESS_VERSION/versionpress-$VERSIONPRESS_VERSION.zip
+    unzip versionpress.zip -d /var/www/html/content/plugins/
+    rm versionpress.zip
   fi
 
   # TODO handle WordPress upgrades magically in the same way, but only if wp-includes/version.php's $wp_version is less than /usr/src/wordpress/wp-includes/version.php's $wp_version
