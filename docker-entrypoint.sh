@@ -54,6 +54,7 @@ EOF
     curl -L -o versionpress.zip https://github.com/versionpress/versionpress/releases/download/$VERSIONPRESS_VERSION/versionpress-$VERSIONPRESS_VERSION.zip
     unzip versionpress.zip -d /var/www/html/content/plugins/
     rm versionpress.zip
+    chown -R www-data:www-data /var/www/html/content/plugins/versionpress
   fi
 
   # TODO handle WordPress upgrades magically in the same way, but only if wp-includes/version.php's $wp_version is less than /usr/src/wordpress/wp-includes/version.php's $wp_version
@@ -167,4 +168,9 @@ $mysql->close();
 EOPHP
 fi
 
+if [ ! -z "$VERSIONPRESS_RESTORE_URL" ]; then
+  # Hacky sed replace until versionpress fixes the restore command
+  sed -i "/\$resetCmd = 'git reset --hard';/a WpdbReplacer::replaceMethods();" content/plugins/versionpress/src/Cli/vp.php
+  wp vp restore-site --siteurl="$VERSIONPRESS_RESTORE_URL" --require="content/plugins/versionpress/src/Cli/vp.php" --yes
+fi
 exec "$@"

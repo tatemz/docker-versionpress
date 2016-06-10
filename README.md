@@ -14,3 +14,4 @@ The following environments are added to this image. See the [official wordpress 
 
 - `WORDPRESS_OPCACHE` - Set to `on` or `off` to toggle PHP opcaching (defaults to `off`)
 - `VERSIONPRESS_VERSION` - Set to a valid VersionPress version (defaults to `3.0.1`).
+- `VERSIONPRESS_RESTORE_URL` - Set to a valid VersionPress URL if you would like to restore a site upon installation (defaults to `false`.
