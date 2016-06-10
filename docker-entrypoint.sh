@@ -166,11 +166,11 @@ if (!$mysql->query('CREATE DATABASE IF NOT EXISTS `' . $mysql->real_escape_strin
 
 $mysql->close();
 EOPHP
-fi
-
 if [ ! -z "$VERSIONPRESS_RESTORE_URL" ]; then
   # Hacky sed replace until versionpress fixes the restore command
   sed -i "/\$resetCmd = 'git reset --hard';/a WpdbReplacer::replaceMethods();" content/plugins/versionpress/src/Cli/vp.php
   wp vp restore-site --siteurl="$VERSIONPRESS_RESTORE_URL" --require="content/plugins/versionpress/src/Cli/vp.php" --yes
 fi
+fi
+
 exec "$@"
