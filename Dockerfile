@@ -17,18 +17,22 @@ RUN chmod a+w /bin && chmod a+w /bin/wp-cli.phar
 RUN wp cli update --nightly --yes
 RUN chmod g-w,o-w /bin && chmod g-w,o-w /bin/wp-cli.phar
 
-# Add replace wordpress with versionpress-skeleton 
-RUN rm -rf /usr/src/wordpress \
-    && git clone git://github.com/tatemz/versionpress-skeleton.git /usr/src/wordpress --recursive \
-    && chown -R www-data:www-data /usr/src/wordpress
+# Download Versionpress
+ENV VERSIONPRESS_VERSION 3.0.1
+RUN curl -L -o /versionpress.zip https://github.com/versionpress/versionpress/releases/download/$VERSIONPRESS_VERSION/versionpress-$VERSIONPRESS_VERSION.zip \
+    && unzip /versionpress.zip -d /usr/src/wordpress/wp-content/plugins/ \
+    && rm /versionpress.zip \
+    && chown -R www-data:www-data /usr/src/wordpress/wp-content/plugins/versionpress
+
+# Install xdebug
+RUN pecl install xdebug
+COPY xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+# Make caching optional
+ENV WORDPRESS_OPCACHE 'off'
 
 # Update entrypoint
 COPY docker-entrypoint.sh /entrypoint.sh
 
-ENV WORDPRESS_OPCACHE 'off'
-ENV VERSIONPRESS_VERSION "3.0.1"
-
-# grr, ENTRYPOINT resets CMD now
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["apache2-foreground"]
-

@@ -6,6 +6,9 @@ if [ "$WORDPRESS_OPCACHE" = 'off' ]; then
   rm -rf /usr/local/etc/php/conf.d/opcache-recommended.ini
 fi
 
+# Declare wp directory
+WP_DIR='/var/www/html/default'
+
 if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
   : "${WORDPRESS_DB_HOST:=mysql}"
   # if we're linked to MySQL and thus have credentials already, let's use them
@@ -24,17 +27,19 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     exit 1
   fi
 
-  if ! [ -e wp/index.php -a -e wp/wp-includes/version.php ]; then
-    echo >&2 "WordPress not found in $(pwd) - copying now..."
-    if [ "$(ls -A)" ]; then
-      echo >&2 "WARNING: $(pwd) is not empty - press Ctrl+C now if this is an error!"
-      ( set -x; ls -A; sleep 10 )
+  mkdir -p $WP_DIR
+
+  if ! [ -e $WP_DIR/index.php -a -e $WP_DIR/wp-includes/version.php ]; then
+    echo >&2 "WordPress not found in $WP_DIR - copying now..."
+    if [ "$(ls -A $WP_DIR)" ]; then
+      echo >&2 "WARNING: $WP_DIR is not empty - press Ctrl+C now if this is an error!"
+      ( set -x; ls -A $WP_DIR; sleep 10 )
     fi
-    tar cf - --one-file-system -C /usr/src/wordpress . | tar xf -
-    echo >&2 "Complete! WordPress has been successfully copied to $(pwd)"
-    if [ ! -e .htaccess ]; then
+    tar cf - --one-file-system -C /usr/src/wordpress . | tar xf - -C $WP_DIR/
+    echo >&2 "Complete! WordPress has been successfully copied to $WP_DIR"
+    if [ ! -e $WP_DIR/.htaccess ]; then
       # NOTE: The "Indexes" option is disabled in the php:apache base image
-      cat > .htaccess <<-'EOF'
+      cat > $WP_DIR/.htaccess <<-'EOF'
         # BEGIN WordPress
         <IfModule mod_rewrite.c>
         RewriteEngine On
@@ -46,15 +51,16 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
         </IfModule>
         # END WordPress
 EOF
-      chown www-data:www-data .htaccess
+      chown www-data:www-data $WP_DIR/.htaccess
     fi
   fi
 
+  # Copy VersionPress
   if ! [ -d content/plugins/versionpress/ ]; then
-    curl -L -o versionpress.zip https://github.com/versionpress/versionpress/releases/download/$VERSIONPRESS_VERSION/versionpress-$VERSIONPRESS_VERSION.zip
-    unzip versionpress.zip -d /var/www/html/content/plugins/
-    rm versionpress.zip
-    chown -R www-data:www-data /var/www/html/content/plugins/versionpress
+    echo >&2 "VersionPress not found in $WP_DIR/wp-content/plugins/versionpress - copying now..."
+    tar cf - --one-file-system -C /usr/src/wordpress/wp-content/plugins/versionpress . | tar xf - -C $WP_DIR/wp-content/plugins/versionpress
+    echo >&2 "Complete! VersionPress has been successfully copied to $WP_DIR/wp-content/plugins/versionpress"
+    chown -R www-data:www-data $WP_DIR/wp-content/plugins/versionpress
   fi
 
   # TODO handle WordPress upgrades magically in the same way, but only if wp-includes/version.php's $wp_version is less than /usr/src/wordpress/wp-includes/version.php's $wp_version
@@ -62,10 +68,10 @@ EOF
   # version 4.4.1 decided to switch to windows line endings, that breaks our seds and awks
   # https://github.com/docker-library/wordpress/issues/116
   # https://github.com/WordPress/WordPress/commit/1acedc542fba2482bab88ec70d4bea4b997a92e4
-  sed -ri 's/\r\n|\r/\n/g' local-config*
+  sed -ri 's/\r\n|\r/\n/g' $WP_DIR/wp-config*
 
-  if [ ! -e local-config.php ]; then
-    awk '/^\/\*.*stop editing.*\*\/$/ && c == 0 { c = 1; system("cat") } { print }' local-config-sample.php > local-config.php <<'EOPHP'
+  if [ ! -e $WP_DIR/wp-config.php ]; then
+    awk '/^\/\*.*stop editing.*\*\/$/ && c == 0 { c = 1; system("cat") } { print }' $WP_DIR/wp-config-sample.php > $WP_DIR/wp-config.php <<'EOPHP'
 // If we're behind a proxy server and using HTTPS, we need to alert Wordpress of that fact
 // see also http://codex.wordpress.org/Administration_Over_SSL#Using_a_Reverse_Proxy
 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
@@ -73,7 +79,7 @@ if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROT
 }
 
 EOPHP
-    chown www-data:www-data local-config.php
+    chown www-data:www-data $WP_DIR/wp-config.php
   fi
 
   # see http://stackoverflow.com/a/2705678/433558
@@ -96,7 +102,7 @@ EOPHP
       start="^(\s*)$(sed_escape_lhs "$key")\s*="
       end=";"
     fi
-    sed -ri "s/($start\s*).*($end)$/\1$(sed_escape_rhs "$(php_escape "$value" "$var_type")")\3/" local-config.php
+    sed -ri "s/($start\s*).*($end)$/\1$(sed_escape_rhs "$(php_escape "$value" "$var_type")")\3/" $WP_DIR/wp-config.php
   }
 
   set_config 'DB_HOST' "$WORDPRESS_DB_HOST"
@@ -122,7 +128,7 @@ EOPHP
       set_config "$unique" "$unique_value"
     else
       # if not specified, let's generate a random value
-      current_set="$(sed -rn "s/define\((([\'\"])$unique\2\s*,\s*)(['\"])(.*)\3\);/\4/p" local-config.php)"
+      current_set="$(sed -rn "s/define\((([\'\"])$unique\2\s*,\s*)(['\"])(.*)\3\);/\4/p" $WP_DIR/wp-config.php)"
       if [ "$current_set" = 'put your unique phrase here' ]; then
         set_config "$unique" "$(head -c1M /dev/urandom | sha1sum | cut -d' ' -f1)"
       fi
@@ -166,11 +172,6 @@ if (!$mysql->query('CREATE DATABASE IF NOT EXISTS `' . $mysql->real_escape_strin
 
 $mysql->close();
 EOPHP
-if [ ! -z "$VERSIONPRESS_RESTORE_URL" ]; then
-  # Hacky sed replace until versionpress fixes the restore command
-  sed -i "/\$resetCmd = 'git reset --hard';/a WpdbReplacer::replaceMethods();" content/plugins/versionpress/src/Cli/vp.php
-  wp vp restore-site --siteurl="$VERSIONPRESS_RESTORE_URL" --require="content/plugins/versionpress/src/Cli/vp.php" --yes
-fi
 fi
 
 exec "$@"
