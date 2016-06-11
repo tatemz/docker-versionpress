@@ -31,6 +31,8 @@ COPY xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 # Make caching optional
 ENV WORDPRESS_OPCACHE 'off'
 
+WORKDIR /var/www/html/default
+
 # Update entrypoint
 COPY docker-entrypoint.sh /entrypoint.sh
 
