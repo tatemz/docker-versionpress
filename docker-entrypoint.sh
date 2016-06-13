@@ -56,9 +56,16 @@ EOF
   fi
 
   # Copy VersionPress
-  if ! [ -d content/plugins/versionpress/ ]; then
+  if ! [ -e $WP_DIR/wp-content/plugins/versionpress/versionpress.php ]; then
     echo >&2 "VersionPress not found in $WP_DIR/wp-content/plugins/versionpress - copying now..."
-    tar cf - --one-file-system -C /usr/src/wordpress/wp-content/plugins/versionpress . | tar xf - -C $WP_DIR/wp-content/plugins/versionpress
+    if [ -e /versionpress/versionpress.php ] && [ ! -L $WP_DIR/wp-content/plugins/versionpress ]; then
+      echo >&2 "Copying versionpress via mounted volume..."
+      ln -s /versionpress/ $WP_DIR/wp-content/plugins/versionpress
+    else
+      echo >&2 "Copying versionpress via embedded src..."
+      tar cf - --one-file-system -C /usr/src/versionpress . | tar xf - -C $WP_DIR/wp-content/plugins/versionpress
+    fi
+
     echo >&2 "Complete! VersionPress has been successfully copied to $WP_DIR/wp-content/plugins/versionpress"
     chown -R www-data:www-data $WP_DIR/wp-content/plugins/versionpress
   fi
