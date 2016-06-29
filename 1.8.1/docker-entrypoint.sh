@@ -6,8 +6,20 @@ if [ "$WORDPRESS_OPCACHE" = 'off' ]; then
   rm -rf /usr/local/etc/php/conf.d/opcache-recommended.ini
 fi
 
-# Declare wp directory
-WP_DIR='/var/www/html/default'
+# Declare project vars
+if [ ! -z ${WP_SKELETON+x} ]; then
+  PROJECT_DIR="/var/www/html/default"
+  WP_DIR="$PROJECT_DIR/wp"
+  WP_CONTENT_DIR="$PROJECT_DIR/content"
+  WP_CONFIG="$PROJECT_DIR/local-config.php"
+  WP_CONFIG_SAMPLE="$PROJECT_DIR/local-config-sample.php"
+else
+  PROJECT_DIR="/var/www/html/default"
+  WP_DIR=$PROJECT_DIR
+  WP_CONTENT_DIR="$WP_DIR/wp-content"
+  WP_CONFIG="$WP_DIR/wp-config.php"
+  WP_CONFIG_SAMPLE="$WP_DIR/wp-config-sample.php"
+fi
 
 if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
   : "${WORDPRESS_DB_HOST:=mysql}"
@@ -27,6 +39,35 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     exit 1
   fi
 
+  mkdir -p $PROJECT_DIR && chown -R www-data:www-data $PROJECT_DIR
+
+  if [ ! -z ${WP_SKELETON+x} ] && [ ! -e $PROJECT_DIR/index.php ]; then
+    echo >&2 "WordPress Skeleton not found in $PROJECT_DIR - copying now..."
+    if [ "$(ls -A $PROJECT_DIR)" ]; then
+      echo >&2 "WARNING: $PROJECT_DIR is not empty - press Ctrl+C now if this is an error!"
+      ( set -x; ls -A $PROJECT_DIR; sleep 10 )
+    fi
+    git clone https://github.com/markjaquith/WordPress-Skeleton.git $PROJECT_DIR
+    rm -rf $PROJECT_DIR/.git
+    echo >&2 "Complete! WordPress Skeleton has been successfully copied to $PROJECT_DIR"
+    if [ ! -e $PROJECT_DIR/.htaccess ]; then
+      # NOTE: The "Indexes" option is disabled in the php:apache base image
+      cat > $PROJECT_DIR/.htaccess <<-'EOF'
+        # BEGIN WordPress
+        <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteBase /
+        RewriteRule ^index\.php$ - [L]
+        RewriteCond %{REQUEST_FILENAME} !-f
+        RewriteCond %{REQUEST_FILENAME} !-d
+        RewriteRule . /index.php [L]
+        </IfModule>
+        # END WordPress
+EOF
+      chown www-data:www-data $PROJECT_DIR/.htaccess
+    fi
+  fi
+
   mkdir -p $WP_DIR && chown -R www-data:www-data $WP_DIR
 
   if ! [ -e $WP_DIR/index.php -a -e $WP_DIR/wp-includes/version.php ]; then
@@ -37,7 +78,7 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     fi
     tar cf - --one-file-system -C /usr/src/wordpress . | tar xf - -C $WP_DIR/
     echo >&2 "Complete! WordPress has been successfully copied to $WP_DIR"
-    if [ ! -e $WP_DIR/.htaccess ]; then
+    if [ -z ${WP_SKELETON+x} ] && [ ! -e $WP_DIR/.htaccess ]; then
       # NOTE: The "Indexes" option is disabled in the php:apache base image
       cat > $WP_DIR/.htaccess <<-'EOF'
         # BEGIN WordPress
@@ -56,19 +97,19 @@ EOF
   fi
 
   # Copy VersionPress
-  if ! [ -e $WP_DIR/wp-content/plugins/versionpress/versionpress.php ]; then
-    echo >&2 "VersionPress not found in $WP_DIR/wp-content/plugins/versionpress - copying now..."
-    mkdir -p $WP_DIR/wp-content/plugins/versionpress/
-    if [ -e /versionpress/versionpress.php ] && [ ! -L $WP_DIR/wp-content/plugins/versionpress ]; then
+  if ! [ -e $WP_CONTENT_DIR/plugins/versionpress/versionpress.php ]; then
+    echo >&2 "VersionPress not found in $WP_CONTENT_DIR/plugins/versionpress - copying now..."
+    mkdir -p $WP_CONTENT_DIR/plugins/versionpress/
+    if [ -e /versionpress/versionpress.php ] && [ ! -L $WP_CONTENT_DIR/plugins/versionpress ]; then
       echo >&2 "Copying versionpress via mounted volume..."
-      ln -s /versionpress/ $WP_DIR/wp-content/plugins/versionpress
+      ln -s /versionpress/ $WP_CONTENT_DIR/plugins/versionpress
     else
       echo >&2 "Copying versionpress via embedded src..."
-      tar cf - --one-file-system -C /usr/src/versionpress . | tar xf - -C $WP_DIR/wp-content/plugins
+      tar cf - --one-file-system -C /usr/src/versionpress . | tar xf - -C $WP_CONTENT_DIR/plugins
     fi
 
-    echo >&2 "Complete! VersionPress has been successfully copied to $WP_DIR/wp-content/plugins/versionpress"
-    chown -R www-data:www-data $WP_DIR/wp-content/plugins/versionpress
+    echo >&2 "Complete! VersionPress has been successfully copied to $WP_CONTENT_DIR/plugins/versionpress"
+    chown -R www-data:www-data $WP_CONTENT_DIR/plugins/versionpress
   fi
 
   # TODO handle WordPress upgrades magically in the same way, but only if wp-includes/version.php's $wp_version is less than /usr/src/wordpress/wp-includes/version.php's $wp_version
@@ -78,8 +119,8 @@ EOF
   # https://github.com/WordPress/WordPress/commit/1acedc542fba2482bab88ec70d4bea4b997a92e4
   sed -ri 's/\r\n|\r/\n/g' $WP_DIR/wp-config*
 
-  if [ ! -e $WP_DIR/wp-config.php ]; then
-    awk '/^\/\*.*stop editing.*\*\/$/ && c == 0 { c = 1; system("cat") } { print }' $WP_DIR/wp-config-sample.php > $WP_DIR/wp-config.php <<'EOPHP'
+  if [ ! -e $WP_CONFIG ]; then
+    awk '/^\/\*.*stop editing.*\*\/$/ && c == 0 { c = 1; system("cat") } { print }' $WP_CONFIG_SAMPLE > $WP_CONFIG <<'EOPHP'
 // If we're behind a proxy server and using HTTPS, we need to alert Wordpress of that fact
 // see also http://codex.wordpress.org/Administration_Over_SSL#Using_a_Reverse_Proxy
 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
@@ -87,7 +128,7 @@ if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROT
 }
 
 EOPHP
-    chown www-data:www-data $WP_DIR/wp-config.php
+    chown www-data:www-data $WP_CONFIG
   fi
 
   # see http://stackoverflow.com/a/2705678/433558
@@ -103,20 +144,21 @@ EOPHP
   set_config() {
     key="$1"
     value="$2"
-    var_type="${3:-string}"
+    configfile="$3"
+    var_type="${4:-string}"
     start="(['\"])$(sed_escape_lhs "$key")\2\s*,"
     end="\);"
     if [ "${key:0:1}" = '$' ]; then
       start="^(\s*)$(sed_escape_lhs "$key")\s*="
       end=";"
     fi
-    sed -ri "s/($start\s*).*($end)$/\1$(sed_escape_rhs "$(php_escape "$value" "$var_type")")\3/" $WP_DIR/wp-config.php
+    sed -ri "s/($start\s*).*($end.+?)$/\1$(sed_escape_rhs "$(php_escape "$value" "$var_type")")\3/" $configfile
   }
 
-  set_config 'DB_HOST' "$WORDPRESS_DB_HOST"
-  set_config 'DB_USER' "$WORDPRESS_DB_USER"
-  set_config 'DB_PASSWORD' "$WORDPRESS_DB_PASSWORD"
-  set_config 'DB_NAME' "$WORDPRESS_DB_NAME"
+  set_config 'DB_HOST' "$WORDPRESS_DB_HOST" $WP_CONFIG
+  set_config 'DB_USER' "$WORDPRESS_DB_USER" $WP_CONFIG
+  set_config 'DB_PASSWORD' "$WORDPRESS_DB_PASSWORD" $WP_CONFIG
+  set_config 'DB_NAME' "$WORDPRESS_DB_NAME" $WP_CONFIG
 
   # allow any of these "Authentication Unique Keys and Salts." to be specified via
   # environment variables with a "WORDPRESS_" prefix (ie, "WORDPRESS_AUTH_KEY")
@@ -133,22 +175,22 @@ EOPHP
   for unique in "${UNIQUES[@]}"; do
     eval unique_value=\$WORDPRESS_$unique
     if [ "$unique_value" ]; then
-      set_config "$unique" "$unique_value"
+      set_config "$unique" "$unique_value" $PROJECT_DIR/wp-config.php
     else
       # if not specified, let's generate a random value
-      current_set="$(sed -rn "s/define\((([\'\"])$unique\2\s*,\s*)(['\"])(.*)\3\);/\4/p" $WP_DIR/wp-config.php)"
+      current_set="$(sed -rn "s/define\((([\'\"])$unique\2\s*,\s*)(['\"])(.*)\3\);/\4/p" $PROJECT_DIR/wp-config.php)"
       if [ "$current_set" = 'put your unique phrase here' ]; then
-        set_config "$unique" "$(head -c1M /dev/urandom | sha1sum | cut -d' ' -f1)"
+        set_config "$unique" "$(head -c1M /dev/urandom | sha1sum | cut -d' ' -f1)" $PROJECT_DIR/wp-config.php
       fi
     fi
   done
 
   if [ "$WORDPRESS_TABLE_PREFIX" ]; then
-    set_config '$table_prefix' "$WORDPRESS_TABLE_PREFIX"
+    set_config '$table_prefix' "$WORDPRESS_TABLE_PREFIX" $WP_CONFIG
   fi
 
   if [ "$WORDPRESS_DEBUG" ]; then
-    set_config 'WP_DEBUG' 1 boolean
+    set_config 'WP_DEBUG' 1 $WP_CONFIG boolean
   fi
 
   TERM=dumb php -- "$WORDPRESS_DB_HOST" "$WORDPRESS_DB_USER" "$WORDPRESS_DB_PASSWORD" "$WORDPRESS_DB_NAME" <<'EOPHP'
