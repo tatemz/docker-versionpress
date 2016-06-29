@@ -27,7 +27,7 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     exit 1
   fi
 
-  mkdir -p $WP_DIR
+  mkdir -p $WP_DIR && chown -R www-data:www-data $WP_DIR
 
   if ! [ -e $WP_DIR/index.php -a -e $WP_DIR/wp-includes/version.php ]; then
     echo >&2 "WordPress not found in $WP_DIR - copying now..."
