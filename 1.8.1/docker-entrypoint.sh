@@ -7,7 +7,7 @@ if [ "$WORDPRESS_OPCACHE" = 'off' ]; then
 fi
 
 # Declare project vars
-if [ ! -z ${WP_SKELETON+x} ]; then
+if [ ! -z $WP_SKELETON ]; then
   PROJECT_DIR="/var/www/html/default"
   WP_DIR="$PROJECT_DIR/wp"
   WP_CONTENT_DIR="$PROJECT_DIR/content"
@@ -39,9 +39,9 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     exit 1
   fi
 
-  mkdir -p $PROJECT_DIR && chown -R www-data:www-data $PROJECT_DIR
+  mkdir -p $PROJECT_DIR && chown www-data:www-data $PROJECT_DIR && chown -R www-data:www-data $PROJECT_DIR
 
-  if [ ! -z ${WP_SKELETON+x} ] && [ ! -e $PROJECT_DIR/index.php ]; then
+  if [ ! -z $WP_SKELETON ] && [ ! -e $PROJECT_DIR/index.php ]; then
     echo >&2 "WordPress Skeleton not found in $PROJECT_DIR - copying now..."
     if [ "$(ls -A $PROJECT_DIR)" ]; then
       echo >&2 "WARNING: $PROJECT_DIR is not empty - press Ctrl+C now if this is an error!"
@@ -68,7 +68,7 @@ EOF
     fi
   fi
 
-  mkdir -p $WP_DIR && chown -R www-data:www-data $WP_DIR
+  mkdir -p $WP_DIR && chown www-data:www-data $WP_DIR && chown -R www-data:www-data $WP_DIR
 
   if ! [ -e $WP_DIR/index.php -a -e $WP_DIR/wp-includes/version.php ]; then
     echo >&2 "WordPress not found in $WP_DIR - copying now..."
@@ -78,7 +78,7 @@ EOF
     fi
     tar cf - --one-file-system -C /usr/src/wordpress . | tar xf - -C $WP_DIR/
     echo >&2 "Complete! WordPress has been successfully copied to $WP_DIR"
-    if [ -z ${WP_SKELETON+x} ] && [ ! -e $WP_DIR/.htaccess ]; then
+    if [ -z $WP_SKELETON ] && [ ! -e $WP_DIR/.htaccess ]; then
       # NOTE: The "Indexes" option is disabled in the php:apache base image
       cat > $WP_DIR/.htaccess <<-'EOF'
         # BEGIN WordPress
